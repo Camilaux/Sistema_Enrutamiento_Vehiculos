@@ -14,9 +14,11 @@ from fastapi.responses import JSONResponse
 from typing import Optional
 import tempfile
 import os
+from datetime import datetime, timedelta
 
 # Usar imports absolutos (funciona cuando el directorio raíz está en sys.path)
 from src.excel_reader import leer_escenario, listar_escenarios_disponibles
+from src.algoritmo import solve_vrp_greedy, haversine_distance
 
 app = FastAPI(
     title="Sistema de Enrutamiento de Vehículos",
@@ -116,20 +118,100 @@ async def enrutar(
             # Leer datos del escenario
             vehiculos, pedidos = leer_escenario(tmp_path, escenario)
             
-            # Aquí se implementará el algoritmo de enrutamiento
+            # Ejecutar el algoritmo Greedy
+            resultado_algo = solve_vrp_greedy(vehiculos, pedidos)
             
-            # Placeholder para el resultado
+            rutas = resultado_algo["rutas"]
+            no_asignados = resultado_algo["metricas"]["no_asignados_count"]
+            pedidos_no_asignados = resultado_algo["no_asignados"]
+            
+            # Procesar rutas para calcular distancias y formatear respuesta
+            vehiculos_response = []
+            distancia_total_global = 0.0
+            tiempo_total_global_horas = 0.0
+            
+            # Velocidad promedio asumida: 30 km/h
+            VELOCIDAD_PROMEDIO_KMH = 30.0
+            
+            for v in vehiculos:
+                pedidos_ruta = rutas.get(v.id, [])
+                if not pedidos_ruta:
+                    continue
+                
+                # Calcular recorrido de la ruta
+                distancia_ruta = 0.0
+                ruta_detallada = []
+                pedidos_ids_asignados = []
+                
+                # Iniciar en el origen del vehículo
+                lat_actual, lon_actual = v.latitud_origen, v.longitud_origen
+                
+                # Gestión de tiempo
+                # Asumimos inicio a las 08:00 AM para la simulación
+                tiempo_actual = datetime.strptime("08:00", "%H:%M")
+                tiempo_inicio = tiempo_actual
+                
+                carga_actual = 0.0
+                orden_contador = 1
+                
+                for pedido in pedidos_ruta:
+                    # Calcular distancia del tramo
+                    dist_tramo = haversine_distance(lat_actual, lon_actual, pedido.latitud_destino, pedido.longitud_destino)
+                    distancia_ruta += dist_tramo
+                    
+                    # Calcular tiempo de viaje
+                    # t = d / v
+                    horas_viaje = dist_tramo / VELOCIDAD_PROMEDIO_KMH
+                    # Agregar tiempo de viaje
+                    tiempo_actual += timedelta(hours=horas_viaje)
+                    
+                    # Formatear hora estimada
+                    hora_entrega = tiempo_actual.strftime("%H:%M")
+                    
+                    # Actualizar posición y carga
+                    lat_actual, lon_actual = pedido.latitud_destino, pedido.longitud_destino
+                    carga_actual += pedido.peso_kg
+                    
+                    # Guardar información
+                    pedidos_ids_asignados.append(pedido.id)
+                    ruta_detallada.append({
+                        "pedido": pedido.id,
+                        "orden": orden_contador,
+                        "hora_estimada_entrega": hora_entrega
+                    })
+                    orden_contador += 1
+                    
+                    # Asumir tiempo de servicio/descarga (ej. 10 mins)
+                    tiempo_actual += timedelta(minutes=10)
+                    
+                distancia_total_global += distancia_ruta
+                
+                # Tiempo total del vehículo (fin - inicio) en horas
+                duracion_total = (tiempo_actual - tiempo_inicio).total_seconds() / 3600.0
+                tiempo_total_global_horas += duracion_total
+                
+                vehiculos_response.append({
+                    "id": v.id,
+                    "pedidos_asignados": pedidos_ids_asignados,
+                    "ruta": ruta_detallada,
+                    "capacidad_utilizada_kg": carga_actual,
+                    "capacidad_maxima_kg": v.capacidad_kg,
+                    "distancia_total_km": round(distancia_ruta, 2),
+                    "tiempo_total_horas": round(duracion_total, 2)
+                })
+            
+            # Resultado formato según requerimiento
             resultado = {
                 "escenario": escenario,
                 "metricas_generales": {
                     "total_pedidos": len(pedidos),
-                    "pedidos_asignados": 0,
-                    "pedidos_no_asignados": len(pedidos),
-                    "distancia_total_km": 0.0,
-                    "tiempo_total_horas": 0.0 
+                    "pedidos_asignados": resultado_algo["metricas"]["asignados"],
+                    "pedidos_no_asignados": no_asignados,
+                    "distancia_total_km": round(distancia_total_global, 2),
+                    "tiempo_total_horas": round(tiempo_total_global_horas, 2)
                 },
-                "vehiculos": [],
-                "pedidos_no_asignados": []
+                "vehiculos": vehiculos_response,
+                "pedidos_no_asignados": [p.id for p in pedidos_no_asignados]
             }
             
             return JSONResponse(content=resultado)

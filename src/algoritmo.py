@@ -1,5 +1,6 @@
 import math
 from typing import List, Dict, Any
+from src.models import Vehiculo, Pedido
 
 def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """
@@ -34,9 +35,59 @@ def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> fl
     distance = R * c
     return distance
 
-if __name__ == "__main__":
-    # Ejemplo de uso
-    lat1, lon1 = 19.4326, -99.1332
-    lat2, lon2 = 19.55, -99.1  
-    distancia = haversine_distance(lat1, lon1, lat2, lon2)
-    print(f"La distancia es {distancia:.2f} km")
+def solve_vrp_greedy(vehiculos: List[Vehiculo], pedidos: List[Pedido]) -> Dict[str, Any]:
+    """
+    Algoritmo Greedy Constructivo para asignar pedidos a vehículos.
+    Criterios:
+    1. Ordenar por Prioridad (desc) y Ventana de Inicio (asc).
+    2. Asignar al vehículo disponible que minimice el incremento de distancia
+       (Greedy espacial) y respete la capacidad.
+    """
+    # 1. Ordenar pedidos: Mayor prioridad, luego Ventana Inicio más temprana
+    pedidos_ordenados = sorted(pedidos, key=lambda x: (-x.prioridad, x.ventana_inicio))
+    
+    # Estructuras de estado
+    rutas = {v.id: [] for v in vehiculos}
+    carga_vehiculos = {v.id: 0.0 for v in vehiculos}
+    # Ubicación actual de cada vehículo (inicialmente su origen)
+    ubicacion_vehiculos = {v.id: (v.latitud_origen, v.longitud_origen) for v in vehiculos}
+    
+    pedidos_no_asignados = []
+    
+    for pedido in pedidos_ordenados:
+        best_vehiculo_id = None
+        min_distance_increment = float('inf')
+        
+        for vehiculo in vehiculos:
+            # Validar Capacidad
+            current_load = carga_vehiculos[vehiculo.id]
+            if current_load + pedido.peso_kg <= vehiculo.capacidad_kg:
+                
+                # Calcular costo: Distancia desde la última ubicación del vehículo
+                last_lat, last_lon = ubicacion_vehiculos[vehiculo.id]
+                dist = haversine_distance(last_lat, last_lon, pedido.latitud_destino, pedido.longitud_destino)
+                
+                # Elegir el que minimice la distancia adicional
+                if dist < min_distance_increment:
+                    min_distance_increment = dist
+                    best_vehiculo_id = vehiculo.id
+        
+        if best_vehiculo_id:
+            # Asignar al mejor vehículo encontrado
+            rutas[best_vehiculo_id].append(pedido)
+            carga_vehiculos[best_vehiculo_id] += pedido.peso_kg
+            
+            # Actualizar ubicación del vehículo al destino del pedido recién asignado
+            ubicacion_vehiculos[best_vehiculo_id] = (pedido.latitud_destino, pedido.longitud_destino)
+        else:
+            pedidos_no_asignados.append(pedido)
+            
+    return {
+        "rutas": rutas,
+        "no_asignados": pedidos_no_asignados,
+        "metricas": {
+            "total_pedidos": len(pedidos),
+            "asignados": len(pedidos) - len(pedidos_no_asignados),
+            "no_asignados_count": len(pedidos_no_asignados)
+        }
+    }
