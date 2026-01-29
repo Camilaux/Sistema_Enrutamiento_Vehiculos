@@ -12,7 +12,7 @@ Este proyecto implementa un sistema de enrutamiento de vehículos, en el cual co
 ## Tiempo real consumido por cada item:
 - Lectura del Excel e infrastructura - 5 horas aproximadamente
 - Implementación del algoritmo base - 4 horas aproximadamente (código) + 2 horas de estudio de la teoría
-- Optimizaciones y casos edge - 
+- Optimizaciones y casos edge - 7 horas aproximadamente (código) + 2 horas de estudio heurística SA y VRP
 - Documentación - 
 
 *Nota:* esta sección se completará progresivamente a medida que avance el desarrollo
