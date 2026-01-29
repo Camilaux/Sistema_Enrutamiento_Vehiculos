@@ -18,7 +18,7 @@ from datetime import datetime, timedelta
 
 # Usar imports absolutos (funciona cuando el directorio raíz está en sys.path)
 from src.excel_reader import leer_escenario, listar_escenarios_disponibles
-from src.algoritmo import solve_vrp_greedy, haversine_distance
+from src.algoritmo import solve_vrp_simulated_annealing, haversine_distance, VELOCIDAD_PROMEDIO_KMH, HORA_INICIO
 
 app = FastAPI(
     title="Sistema de Enrutamiento de Vehículos",
@@ -118,8 +118,8 @@ async def enrutar(
             # Leer datos del escenario
             vehiculos, pedidos = leer_escenario(tmp_path, escenario)
             
-            # Ejecutar el algoritmo Greedy
-            resultado_algo = solve_vrp_greedy(vehiculos, pedidos)
+            # Ejecutar algoritmo Simulated Annealing
+            resultado_algo = solve_vrp_simulated_annealing(vehiculos, pedidos)
             
             rutas = resultado_algo["rutas"]
             no_asignados = resultado_algo["metricas"]["no_asignados_count"]
@@ -129,9 +129,6 @@ async def enrutar(
             vehiculos_response = []
             distancia_total_global = 0.0
             tiempo_total_global_horas = 0.0
-            
-            # Velocidad promedio asumida: 30 km/h
-            VELOCIDAD_PROMEDIO_KMH = 30.0
             
             for v in vehiculos:
                 pedidos_ruta = rutas.get(v.id, [])
@@ -148,7 +145,7 @@ async def enrutar(
                 
                 # Gestión de tiempo
                 # Asumimos inicio a las 08:00 AM para la simulación
-                tiempo_actual = datetime.strptime("08:00", "%H:%M")
+                tiempo_actual = datetime.strptime(HORA_INICIO, "%H:%M")
                 tiempo_inicio = tiempo_actual
                 
                 carga_actual = 0.0
@@ -164,6 +161,12 @@ async def enrutar(
                     horas_viaje = dist_tramo / VELOCIDAD_PROMEDIO_KMH
                     # Agregar tiempo de viaje
                     tiempo_actual += timedelta(hours=horas_viaje)
+                    
+                    # Manejo de Ventana Inicio ("esperar hasta que abra")
+                    # Nota: check_time_window ya validó esto en el algoritmo, aquí solo recalculamos para mostrar
+                    t_inicio_ventana = datetime.strptime(pedido.ventana_inicio, "%H:%M")
+                    if tiempo_actual < t_inicio_ventana:
+                        tiempo_actual = t_inicio_ventana
                     
                     # Formatear hora estimada
                     hora_entrega = tiempo_actual.strftime("%H:%M")
@@ -199,6 +202,18 @@ async def enrutar(
                     "distancia_total_km": round(distancia_ruta, 2),
                     "tiempo_total_horas": round(duracion_total, 2)
                 })
+
+            # Asignación de razones por pedidos no asignados
+            no_asignados_fmt = []
+            for item in pedidos_no_asignados:
+                # item is dict {pedido: Pedido, razon: str}
+                p_obj = item["pedido"]
+                razon = item["razon"]
+                no_asignados_fmt.append({
+                    "id": p_obj.id,
+                    "razon_no_asignacion": razon
+                })
+
             
             # Resultado formato según requerimiento
             resultado = {
@@ -211,7 +226,7 @@ async def enrutar(
                     "tiempo_total_horas": round(tiempo_total_global_horas, 2)
                 },
                 "vehiculos": vehiculos_response,
-                "pedidos_no_asignados": [p.id for p in pedidos_no_asignados]
+                "pedidos_no_asignados": no_asignados_fmt
             }
             
             return JSONResponse(content=resultado)
