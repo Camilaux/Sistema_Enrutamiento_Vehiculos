@@ -13,7 +13,7 @@ Este proyecto implementa un sistema de enrutamiento de vehículos, en el cual co
 - Lectura del Excel e infrastructura - 5 horas aproximadamente
 - Implementación del algoritmo base - 4 horas aproximadamente (código) + 2 horas de estudio de la teoría
 - Optimizaciones y casos edge - 7 horas aproximadamente (código) + 2 horas de estudio heurística SA y VRP
-- Documentación - 
+- Documentación - 2 horas aproximadamente
 
 *Nota:* esta sección se completará progresivamente a medida que avance el desarrollo
 
@@ -27,21 +27,21 @@ Este proyecto implementa un sistema de enrutamiento de vehículos, en el cual co
 
 1. **Crear entorno virtual (opcional pero recomendado)**
    ```bash
-   python -m venv venv
+   python -m venv .venv
    ```
 
 2. **Activar entorno virtual**
    - Windows (PowerShell):
      ```powershell
-     .\venv\Scripts\Activate.ps1
+     .\.venv\Scripts\Activate.ps1
      ```
    - Windows (CMD):
      ```cmd
-     venv\Scripts\activate.bat
+     .venv\Scripts\activate.bat
      ```
    - Linux/Mac:
      ```bash
-     source venv/bin/activate
+     source .venv/bin/activate
      ```
 
 3. **Instalar dependencias**
@@ -53,15 +53,10 @@ Este proyecto implementa un sistema de enrutamiento de vehículos, en el cual co
    ```bash
    python main.py
    ```
-   O usando uvicorn directamente:
-   ```bash
-   uvicorn main:app --reload
-   ```
 
 5. **Acceder a la API**
    - La API estará disponible en: `http://localhost:8000`
    - Documentación interactiva (Swagger): `http://localhost:8000/docs`
-   - Documentación alternativa (ReDoc): `http://localhost:8000/redoc`
 
 ### Endpoints disponibles
 
@@ -70,46 +65,124 @@ Este proyecto implementa un sistema de enrutamiento de vehículos, en el cual co
 - `POST /api/escenarios` - Lista los escenarios disponibles en un archivo Excel
 - `POST /api/enrutar` - Procesa un archivo Excel y calcula rutas optimizadas
 
-### Ejemplo de uso con curl
-
-**Listar escenarios:**
-```bash
-curl -X POST "http://localhost:8000/api/escenarios" -F "file=@data/datos_prueba_enrutamiento.xlsx"
-```
-
-**Procesar escenario E1:**
-```bash
-curl -X POST "http://localhost:8000/api/enrutar?escenario=E1" -F "file=@data/datos_prueba_enrutamiento.xlsx"
-```
-
-### Ejemplo de uso con Python requests
-
-```python
-import requests
-
-# Listar escenarios
-with open('data/datos_prueba_enrutamiento.xlsx', 'rb') as f:
-    response = requests.post('http://localhost:8000/api/escenarios', files={'file': f})
-    print(response.json())
-
-# Procesar escenario E1
-with open('data/datos_prueba_enrutamiento.xlsx', 'rb') as f:
-    response = requests.post('http://localhost:8000/api/enrutar?escenario=E1', files={'file': f})
-    print(response.json())
-```
-
 ## Decisiones de Diseño
 
-- ¿Qué algoritmo o approach usaste para el enrutamiento? ¿Por qué elegiste esa solución?
-- ¿Cómo priorizas entre distancia, tiempo y prioridades de pedidos? Explica tu función objetivo 
-- ¿Qué hace tu sistema cuando es imposible asignar todos los pedidos? (crítico para Escenario 3)
-- ¿Cómo calculaste las distancias entre coordenadas geográficas?
-- ¿Qué stack tecnológico elegiste y por qué? (justificación breve)
+### ¿Qué algoritmo o approach usaste para el enrutamiento? ¿Por qué elegiste esa solución?
+
+Se implementó un enfoque híbrido de dos fases:
+1.  **Construcción Greedy Inteligente**: Genera una solución inicial factible evaluando la inserción óptima de cada pedido priorizado en todas las posiciones posibles.
+
+2.  **Optimización via Simulated Annealing**: Refina la solución inicial permitiendo movimientos estocásticos (swaps, movimientos, inserciones) para escapar de mínimos locales.
+
+Se eligió esta combinación porque el problema VRP con ventanas de tiempo y múltiples restricciones (CVRPTW) es NP-Hard. El greedy provee una base sólida rápida, y el Simulated Annealing permite optimizar costos globales complejos (como el balance de carga y rescate de no asignados) que un greedy puro no puede ver.
+
+### ¿Cómo priorizas entre distancia, tiempo y prioridades de pedidos? Explica tu función objetivo 
+
+El algoritmo utiliza una función objetivo con penalizaciones (penalty-based objective function), ampliamente usada en problemas de enrutamiento con múltiples restricciones.
+
+El objetivo no es minimizar únicamente la distancia, sino reflejar de forma explícita las prioridades del negocio:
+
+- Cumplir la mayor cantidad posible de pedidos
+
+- Priorizar pedidos críticos (alta prioridad)
+
+- Respetar restricciones duras (capacidad, ventanas, jornada)
+
+- Minimizar costos operativos solo cuando lo anterior ya se cumple
+
+La función objetivo global se define como:
+
+
+$$
+\text{Costo total} = \sum \text{Costo\_ruta} + \sum \text{Penalización\_no\_asignados}
+$$
+
+##### Costo de una ruta
+
+Para cada vehículo, el costo de su ruta se calcula como:
+
+$$
+\text{Costo\_ruta} = w_{dist} \cdot \text{distancia\_total} + w_{wait} \cdot \text{tiempo\_espera} + w_{waste} \cdot (\text{desperdicio\_capacidad})^2
+$$
+
+Donde:
+
+- distancia_total: kilómetros recorridos por el vehículo
+
+- tiempo_espera: tiempo acumulado esperando la apertura de ventanas de tiempo
+
+- desperdicio_capacidad: 
+
+$$
+\text{desperdicio\_capacidad} = \frac{\text{capacidad\_vehículo} - \text{carga\_asignada}}{\text{capacidad\_vehículo}}
+$$
+
+Este término penaliza el uso ineficiente de vehículos grandes para pedidos que podrían ser atendidos por vehículos más pequeños, favoreciendo un mejor capacity matching.
+
+Las siguientes restricciones se tratan como hard constraints (costo infinito si se violan):
+
+- Exceder la capacidad máxima del vehículo
+
+- Llegar fuera de la ventana de tiempo
+
+- Exceder la jornada laboral máxima (8 horas)
+
+##### Penalización por pedidos no asignados
+
+Cada pedido no asignado genera una penalización cuadrática en función de su prioridad:
+$$
+\text{Penalización\_no\_asignado} = w_{unassigned} \cdot \text{prioridad}^2
+$$
+
+Esto garantiza que:
+
+- Perder un pedido de prioridad alta sea órdenes de magnitud peor que aumentar algunos kilómetros
+
+- El algoritmo esté dispuesto a aceptar rutas más largas si eso permite cumplir más pedidos críticos
+
+### ¿Qué hace tu sistema cuando es imposible asignar todos los pedidos? (crítico para Escenario 3)
+
+El sistema está diseñado para ser resiliente:
+1.  Identifica restricciones "duras" (ej. un pedido de 2000kg en una flota de 1000kg) y los marca inmediatamente con la razón precisa.
+2.  El algoritmo de Simulated Annealing tiene un movimiento específico (`insert_unassigned`) que intenta activamente reinsertar pedidos excluidos si encuentra huecos factibles.
+3.  Si finalmente no es posible asignar un pedido (por conflicto de ventanas irreconciliable o falta de capacidad), se retorna en una lista explícita `pedidos_no_asignados` junto con la razón técnica.
+
+### ¿Cómo calculaste las distancias entre coordenadas geográficas?
+
+Se utilizó la **Fórmula de Haversine**, que calcula la distancia del círculo máximo entre dos puntos de una esfera (la Tierra), considerando la latitud y longitud. Esto ofrece una precisión adecuada para logística urbana sin requerir servicios externos de mapeo.
+
+### ¿Qué stack tecnológico elegiste y por qué? (justificación breve)
+
+*   **Python**: Lenguaje estándar en ciencia de datos e investigación operativa.
+*   **FastAPI**: Framework moderno y rápido para construir APIs, con validación de datos automática (Pydantic) y documentación interactiva.
+*   **Simulated Annealing**: Implementación pura en Python para mantener el control total sobre la función objetivo y las restricciones personalizadas.
 
 ## Trade-offs Importantes
 
+- Se optó por Simulated Annealing en lugar de un Algoritmo Genético debido a su menor complejidad de implementación y menor costo computacional. SA permite partir de una solución greedy factible y mejorarla progresivamente mediante operadores locales, lo que resulta más adecuado para ejecución en una API REST.
+
+Si bien los algoritmos genéticos ofrecen mayor exploración global del espacio de soluciones, requieren poblaciones, operadores de cruce y mutación, así como mayor tiempo de cómputo y ajuste de hiperparámetros. El trade-off asumido fue sacrificar parte de esa exploración global a cambio de mayor estabilidad, explicabilidad y control del tiempo de ejecución.
+
+- **Hard Constraints**: La jornada de 8h es estricta. Esto puede dejar pedidos sin entregar que solo requerían 10 minutos extra, privilegiando el cumplimiento legal sobre la entregas marginales.
+
 ## Limitaciones Conocidas
 
-- ¿Qué no hace tu solución?
-- ¿Con cuántos vehículos/pedidos escala razonablemente?
-- ¿Qué mejorarías con más tiempo?
+- No se modelan recargas múltiples por vehículo
+
+- No se optimiza el retorno al depósito
+
+- La solución no garantiza optimalidad global
+
+- Escala razonablemente hasta decenas de vehículos y cientos de pedidos
+
+- Se asume velocidad constante (30km/h), ignorando tráfico en tiempo real.
+
+## Posibles mejoras
+
+- Multi-depot VRP
+
+- Ajuste dinámico de pesos
+
+- Paralelización del Simulated Annealing
+
+- Integración con motores de optimización externos
