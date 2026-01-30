@@ -3,20 +3,24 @@ API REST para el sistema de enrutamiento de vehículos.
 """
 import sys
 from pathlib import Path
+import os
+import shutil
 
-# Agregar el directorio raíz al path para permitir imports relativos
-if __name__ == "__main__":
-    project_root = Path(__file__).parent.parent
-    sys.path.insert(0, str(project_root))
+# Configuración robusta del path
+# Definir project_root de forma que funcione tanto con 'python main.py' como con 'uvicorn'
+current_file = Path(__file__).resolve()
+project_root = current_file.parent.parent
+sys.path.insert(0, str(project_root))
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional
 import tempfile
-import os
 from datetime import datetime, timedelta
 
-# Usar imports absolutos (funciona cuando el directorio raíz está en sys.path)
+# Imports del proyecto
 from src.excel_reader import leer_escenario, listar_escenarios_disponibles
 from src.algoritmo import solve_vrp_simulated_annealing, haversine_distance, VELOCIDAD_PROMEDIO_KMH, HORA_INICIO
 
@@ -26,6 +30,10 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# Montar archivos estáticos para el frontend
+static_path = os.path.join(project_root, "src", "static")
+os.makedirs(static_path, exist_ok=True) # Asegurar que existe
+app.mount("/static", StaticFiles(directory=static_path), name="static")
 
 @app.get("/")
 async def root():
@@ -36,9 +44,16 @@ async def root():
         "endpoints": {
             "POST /api/enrutar": "Procesa un archivo Excel y calcula rutas optimizadas",
             "GET /api/escenarios": "Lista los escenarios disponibles en un archivo Excel",
-            "GET /health": "Health check"
+            "GET /health": "Health check",
+            "GET /mapa": "Visualización gráfica de rutas"
         }
     }
+
+
+@app.get("/mapa", response_class=FileResponse)
+async def ver_mapa():
+    """Retorna la interfaz gráfica para visualización."""
+    return os.path.join(project_root, "src", "static", "index.html")
 
 
 @app.get("/health")
@@ -105,6 +120,10 @@ async def enrutar(
             tmp_path = tmp_file.name
         
         try:
+            # Normalizar escenario a mayúsculas si existe (ej. e1 -> E1)
+            if escenario:
+                escenario = escenario.upper()
+
             # Si no se especifica escenario, listar y usar el primero
             if escenario is None:
                 escenarios_disponibles = listar_escenarios_disponibles(tmp_path)
@@ -179,6 +198,8 @@ async def enrutar(
                     pedidos_ids_asignados.append(pedido.id)
                     ruta_detallada.append({
                         "pedido": pedido.id,
+                        "latitud": pedido.latitud_destino,
+                        "longitud": pedido.longitud_destino,
                         "orden": orden_contador,
                         "hora_estimada_entrega": hora_entrega
                     })
@@ -195,6 +216,10 @@ async def enrutar(
                 
                 vehiculos_response.append({
                     "id": v.id,
+                    "origen": {
+                        "latitud": v.latitud_origen,
+                        "longitud": v.longitud_origen
+                    },
                     "pedidos_asignados": pedidos_ids_asignados,
                     "ruta": ruta_detallada,
                     "capacidad_utilizada_kg": carga_actual,

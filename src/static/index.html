@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Rutas - VRP Visualization</title>
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; display: flex; flex-direction: column; height: 100vh; }
+        header { background-color: #2c3e50; color: white; padding: 1rem; text-align: center; }
+        .container { display: flex; flex: 1; overflow: hidden; }
+        .sidebar { width: 350px; background-color: #f8f9fa; padding: 20px; box-shadow: 2px 0 5px rgba(0,0,0,0.1); overflow-y: auto; z-index: 1000;}
+        .map-container { flex: 1; position: relative; }
+        #map { width: 100%; height: 100%; }
+        
+        .control-group { margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid #ddd; }
+        .control-group label { display: block; margin-bottom: 8px; font-weight: bold; color: #34495e; }
+        input[type="file"] { background: white; border: 2px dashed #3498db; padding: 10px; cursor: pointer; }
+        input[type="file"]:hover { background: #ecf0f1; }
+        select { width: 100%; padding: 8px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 4px; background: white; }
+        button { background-color: #27ae60; color: white; border: none; padding: 12px 15px; border-radius: 4px; cursor: pointer; width: 100%; font-size: 16px; transition: background 0.3s; font-weight: bold; }
+        button:hover { background-color: #219150; }
+        button:disabled { background-color: #95a5a6; cursor: not-allowed; }
+        
+        .stats-card { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 15px; }
+        .stats-title { font-weight: bold; color: #7f8c8d; font-size: 0.9em; margin-bottom: 5px; }
+        .stats-value { font-size: 1.2em; color: #2c3e50; font-weight: bold; }
+        .alert { padding: 10px; border-radius: 4px; margin-bottom: 10px; font-size: 0.9em; }
+        .alert-error { background-color: #fadbd8; color: #c0392b; border: 1px solid #f5b7b1; }
+        .alert-info { background-color: #d4e6f1; color: #2980b9; border: 1px solid #a9cce3; }
+        
+        .legend { background: white; padding: 10px; border-radius: 5px; box-shadow: 0 0 10px rgba(0,0,0,0.2); font-size: 12px; line-height: 1.5; }
+        .legend-item { display: flex; align-items: center; margin-bottom: 5px; }
+        .color-box { width: 15px; height: 15px; margin-right: 8px; border-radius: 3px; }
+
+        #loadingOverlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.8); display: none; align-items: center; justify-content: center; z-index: 2000; flex-direction: column; }
+        .spinner { border: 5px solid #f3f3f3; border-top: 5px solid #3498db; border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; margin-bottom: 15px; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>Enrutamiento Inteligente de Vehículos</h1>
+</header>
+
+<div class="container">
+    <aside class="sidebar">
+        <div class="control-group">
+            <label for="fileInput">1. Cargar Archivo Excel</label>
+            <input type="file" id="fileInput" accept=".xlsx, .xls" />
+            
+            <label for="scenarioSelect">2. Seleccionar Escenario</label>
+            <select id="scenarioSelect" disabled>
+                <option value="">-- Seleccione un archivo primero --</option>
+            </select>
+            
+            <button id="btnCalculate" disabled>Calcular Rutas (Simulated Annealing)</button>
+        </div>
+
+        <div id="resultsPanel" style="display: none;">
+            <h3>Resultados Generales</h3>
+            <div class="stats-card">
+                <div class="stats-title">Escenario</div>
+                <div class="stats-value" id="resEscenario">-</div>
+            </div>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                <div class="stats-card">
+                    <div class="stats-title">Total Pedidos</div>
+                    <div class="stats-value" id="resTotal">-</div>
+                </div>
+                <div class="stats-card">
+                    <div class="stats-title">Asignados</div>
+                    <div class="stats-value" style="color: #27ae60;" id="resAsignados">-</div>
+                </div>
+                <div class="stats-card">
+                    <div class="stats-title">Distancia</div>
+                    <div class="stats-value" id="resDistancia">- km</div>
+                </div>
+                <div class="stats-card">
+                    <div class="stats-title">Tiempo</div>
+                    <div class="stats-value" id="resTiempo">- h</div>
+                </div>
+            </div>
+
+            <div id="unassignedPanel" class="alert alert-error" style="display: none;">
+                <strong>⚠️ Pedidos No Asignados: <span id="resNoAsignadosCount">0</span></strong>
+                <ul id="unassignedList" style="margin: 5px 0 0 15px; padding: 0;"></ul>
+            </div>
+        </div>
+    </aside>
+
+    <main class="map-container">
+        <div id="loadingOverlay">
+            <div class="spinner"></div>
+            <div>Optimizando rutas... Esto puede tomar unos segundos.</div>
+        </div>
+        <div id="map"></div>
+    </main>
+</div>
+
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+<script>
+    // Configuración del Mapa
+    const map = L.map('map').setView([6.2442, -75.5812], 12); // Centrado en Medellín por defecto
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    }).addTo(map);
+
+    let currentLayerGroup = L.layerGroup().addTo(map);
+
+    // Colores para rutas
+    const colors = ['#e74c3c', '#3498db', '#f1c40f', '#9b59b6', '#2ecc71', '#e67e22', '#1abc9c', '#34495e'];
+
+    // DOM Elements
+    const fileInput = document.getElementById('fileInput');
+    const scenarioSelect = document.getElementById('scenarioSelect');
+    const btnCalculate = document.getElementById('btnCalculate');
+    const loadingOverlay = document.getElementById('loadingOverlay');
+    const resultsPanel = document.getElementById('resultsPanel');
+
+    // Event Listeners
+    fileInput.addEventListener('change', async (e) => {
+        if (e.target.files.length > 0) {
+            await loadScenarios(e.target.files[0]);
+        }
+    });
+
+    btnCalculate.addEventListener('click', calculateRoutes);
+
+    async function loadScenarios(file) {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        try {
+            scenarioSelect.disabled = true;
+            scenarioSelect.innerHTML = '<option>Cargando...</option>';
+            
+            const response = await fetch('/api/escenarios', {
+                method: 'POST',
+                body: formData
+            });
+            
+            if (!response.ok) throw new Error('Error al cargar escenarios');
+            
+            const data = await response.json();
+            
+            scenarioSelect.innerHTML = '';
+            data.escenarios.forEach(esc => {
+                const option = document.createElement('option');
+                option.value = esc;
+                option.textContent = esc;
+                scenarioSelect.appendChild(option);
+            });
+            
+            scenarioSelect.disabled = false;
+            btnCalculate.disabled = false;
+            
+        } catch (error) {
+            alert('Error: ' + error.message);
+            scenarioSelect.innerHTML = '<option value="">Error al cargar</option>';
+        }
+    }
+
+    async function calculateRoutes() {
+        const file = fileInput.files[0];
+        const scenario = scenarioSelect.value;
+        
+        if (!file || !scenario) {
+            alert("Seleccione archivo y escenario");
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        loadingOverlay.style.display = 'flex';
+        currentLayerGroup.clearLayers(); // Limpiar mapa
+        resultsPanel.style.display = 'none';
+
+        try {
+            const response = await fetch(`/api/enrutar?escenario=${scenario}`, {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!response.ok) {
+                const err = await response.json();
+                throw new Error(err.detail || 'Error en el cálculo');
+            }
+
+            const data = await response.json();
+            displayResults(data);
+            drawRoutes(data);
+
+        } catch (error) {
+            alert('Error: ' + error.message);
+        } finally {
+            loadingOverlay.style.display = 'none';
+        }
+    }
+
+    function displayResults(data) {
+        resultsPanel.style.display = 'block';
+        const m = data.metricas_generales;
+        
+        document.getElementById('resEscenario').textContent = data.escenario;
+        document.getElementById('resTotal').textContent = m.total_pedidos;
+        document.getElementById('resAsignados').textContent = m.pedidos_asignados;
+        document.getElementById('resDistancia').textContent = m.distancia_total_km;
+        document.getElementById('resTiempo').textContent = m.tiempo_total_horas;
+
+        const unassignedPanel = document.getElementById('unassignedPanel');
+        const unassignedList = document.getElementById('unassignedList');
+        
+        // Check metricas or direct list
+        const unassignedCount = Array.isArray(data.pedidos_no_asignados) ? data.pedidos_no_asignados.length : m.pedidos_no_asignados;
+
+        if (unassignedCount > 0) {
+            unassignedPanel.style.display = 'block';
+            document.getElementById('resNoAsignadosCount').textContent = unassignedCount;
+            unassignedList.innerHTML = '';
+            
+            data.pedidos_no_asignados.forEach(item => {
+                const li = document.createElement('li');
+                li.style.marginBottom = '5px';
+                li.innerHTML = `<strong>${item.id}</strong>: ${item.razon_no_asignacion}`;
+                unassignedList.appendChild(li);
+            });
+        } else {
+            unassignedPanel.style.display = 'none';
+        }
+    }
+
+    function drawRoutes(data) {
+        const bounds = L.latLngBounds();
+        
+        let legendHtml = '<h4>Vehículos</h4>';
+
+        data.vehiculos.forEach((vehiculo, index) => {
+            if (!vehiculo.ruta || vehiculo.ruta.length === 0) return;
+
+            const color = colors[index % colors.length];
+            legendHtml += `<div class="legend-item"><div class="color-box" style="background:${color}"></div>${vehiculo.id} (${vehiculo.capacidad_utilizada_kg}kg)</div>`;
+
+            // 1. Puntos de la ruta (Lat/Lon)
+            // Incluimos Origen -> Puntos -> Origen (opcional, aqui solo dibujamos ruta de entrega)
+            // Main.py ahora devuelve 'origen' {lat, lon}
+            
+            const startPoint = [vehiculo.origen.latitud, vehiculo.origen.longitud];
+            const routePoints = [startPoint];
+            
+            // Marker Origen
+            L.marker(startPoint, {
+                icon: L.divIcon({
+                    className: 'custom-div-icon',
+                    html: `<div style="background-color:${color};width:12px;height:12px;border-radius:50%;border:2px solid black;"></div>`,
+                    iconSize: [20, 20]
+                })
+            }).bindPopup(`<b>${vehiculo.id} (Origen)</b>`).addTo(currentLayerGroup);
+
+            bounds.extend(startPoint);
+
+            // Markers Pedidos
+            vehiculo.ruta.forEach(stop => {
+                const lat = stop.latitud;
+                const lon = stop.longitud;
+                const point = [lat, lon];
+                routePoints.push(point);
+                bounds.extend(point);
+
+                L.circleMarker(point, {
+                    radius: 8,
+                    fillColor: color,
+                    color: "#000",
+                    weight: 1,
+                    opacity: 1,
+                    fillOpacity: 0.8
+                }).bindPopup(`
+                    <b>Pedido: ${stop.pedido}</b><br>
+                    Orden: ${stop.orden}<br>
+                    Llegada: ${stop.hora_estimada_entrega}
+                `).addTo(currentLayerGroup);
+            });
+
+            // Dibujar Polyline
+            L.polyline(routePoints, {
+                color: color,
+                weight: 4,
+                opacity: 0.7,
+                dashArray: '10, 10', // Dashed line to represent "travel" straight lines (since we use Haversine, not road API)
+                lineJoin: 'round'
+            }).addTo(currentLayerGroup);
+        });
+
+        // Add Legend
+        const legend = L.control({position: 'bottomright'});
+        legend.onAdd = function (map) {
+            const div = L.DomUtil.create('div', 'legend');
+            div.innerHTML = legendHtml;
+            return div;
+        };
+        
+        // Limpiar leyenda anterior si existe
+        const oldLegends = document.querySelectorAll('.legend');
+        oldLegends.forEach(l => l.remove());
+        
+        legend.addTo(map);
+
+        map.fitBounds(bounds, { padding: [50, 50] });
+    }
+</script>
+
+</body>
+</html>

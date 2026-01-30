@@ -51,12 +51,13 @@ Este proyecto implementa un sistema de enrutamiento de vehículos, en el cual co
 
 4. **Iniciar el servidor API**
    ```bash
-   python main.py
+   python src/main.py
    ```
 
 5. **Acceder a la API**
    - La API estará disponible en: `http://localhost:8000`
    - Documentación interactiva (Swagger): `http://localhost:8000/docs`
+   - Visualización mapa: `http://localhost:8000/mapa`
 
 ### Endpoints disponibles
 
