@@ -220,7 +220,7 @@ def solve_vrp_greedy(vehiculos: List[Vehiculo], pedidos: List[Pedido]) -> Dict[s
             
             # Calcular costo base de la ruta actual
             base_cost = calculate_route_cost(v, current_route)
-            if base_cost == float('inf'): # Should not happen if logic is sound
+            if base_cost == float('inf'): 
                 base_cost = 0 
             
             # Probar posiciones 0..N
@@ -308,16 +308,13 @@ def solve_vrp_simulated_annealing(vehiculos: List[Vehiculo], pedidos: List[Pedid
         
         if move_type == 'insert_unassigned' and new_no_asignados:
             # Intentar insertar un pedido no asignado (priorizando alta prioridad)
-            # Ordenar temporamente para el intento (o random weighted)
             # Simplemente tomamos uno random para SA (exploracion) o uno de alta prioridad
             
-            # Estrategia híbrida: Random pero sesgado a alta prioridad?
-            # Simple: Random choice
             idx_un = random.randint(0, len(new_no_asignados)-1)
             item_un = new_no_asignados[idx_un]
             p_un = item_un["pedido"]
             
-            # Intentar insertar en la mejor posición de un vehículo random o el mejor?
+            # Intentar insertar en la mejor posición de un vehículo random o el mejor
             # SA prefiere cambios pequeños, probemos insertar en UN vehiculo random en SU mejor posicion
             v_target_id = random.choice(v_ids)
             r_target = new_routes[v_target_id]
@@ -398,7 +395,7 @@ def solve_vrp_simulated_annealing(vehiculos: List[Vehiculo], pedidos: List[Pedid
             new_cost = calculate_global_cost(vehiculos_dict, new_routes, new_no_asignados)
             delta = new_cost - current_cost
             
-            # Aceptar si mejora O si cumple criterio de metropolis
+            # Aceptar si mejora
             # Nota: Si new_cost es inf (no feasible), delta es inf, no entra.
             if delta < 0 or random.random() < math.exp(-delta / temp):
                 current_routes = new_routes
