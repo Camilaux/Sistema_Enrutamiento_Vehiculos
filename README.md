@@ -14,6 +14,7 @@ Este proyecto implementa un sistema de enrutamiento de vehículos, en el cual co
 - Implementación del algoritmo base - 4 horas aproximadamente (código) + 2 horas de estudio de la teoría
 - Optimizaciones y casos edge - 7 horas aproximadamente (código) + 2 horas de estudio heurística SA y VRP
 - Documentación - 2 horas aproximadamente
+- Bonus - 8 horas aproximadamente
 
 *Nota:* esta sección se completará progresivamente a medida que avance el desarrollo
 
