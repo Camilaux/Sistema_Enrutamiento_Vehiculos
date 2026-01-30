@@ -94,22 +94,31 @@ El objetivo no es minimizar únicamente la distancia, sino reflejar de forma exp
 
 La función objetivo global se define como:
 
+$$
+C_{global} = \sum_{vehiculos} C_{ruta}(r_v) + \sum_{p \in N} (w_{un} \cdot prio(p)^2)
+$$
 
 $$
 \text{Costo total} = \sum \text{Costo ruta} + \sum \text{Penalización no asignados}
 $$
+Donde $N$ representan los pedidos no asignados.
 
 ##### Costo de una ruta
 
-Para cada vehículo, el costo de su ruta se calcula como:
+Para cada vehículo, el costo se calcula como:
 
 $$
 \text{Costo ruta} = w_{dist} \cdot \text{distancia total} + w_{wait} \cdot \text{tiempo espera} + w_{waste} \cdot (\text{desperdicio capacidad})^2
+C_{ruta}(r) = w_D \cdot D(r) + w_{wait} \cdot T_{wait}(r) + w_{late} \cdot L(r) + w_{ot} \cdot OT(r) + w_{cap} \cdot U(r)^2
 $$
 
 Donde:
 
-- distancia_total: kilómetros recorridos por el vehículo
+- $D(r)$: Distancia total recorrida ($w_D$)
+- $T_{wait}(r)$: Tiempo de espera acumulado ($w_{wait}$)
+- $L(r)$: Violaciones de ventana de tiempo ($w_{late}$)
+- $OT(r)$: Exceso de jornada laboral ($w_{ot}$)
+- $U(r)$: Uso de capacidad al cuadrado ($w_{cap}$) para balanceo
 
 - tiempo_espera: tiempo acumulado esperando la apertura de ventanas de tiempo
 
@@ -128,19 +137,17 @@ Las siguientes restricciones se tratan como hard constraints (costo infinito si 
 - Llegar fuera de la ventana de tiempo
 
 - Exceder la jornada laboral máxima (8 horas)
+En la implementación, $L(r)$ y $OT(r)$ actúan como restrictiones duras (Hard Constraints), resultando en un costo infinito si se violan.
 
 ##### Penalización por pedidos no asignados
 
-Cada pedido no asignado genera una penalización cuadrática en función de su prioridad:
+Cada pedido no asignado genera una penalización cuadrática:
 $$
 \text{Penalización no asignado} = w_{unassigned} \cdot \text{prioridad}^2
+\text{Penalización} = w_{un} \cdot prio(p)^2
 $$
 
-Esto garantiza que:
-
-- Perder un pedido de prioridad alta sea órdenes de magnitud peor que aumentar algunos kilómetros
-
-- El algoritmo esté dispuesto a aceptar rutas más largas si eso permite cumplir más pedidos críticos
+Esto garantiza que perder un pedido de alta prioridad sea costoso.
 
 ### ¿Qué hace tu sistema cuando es imposible asignar todos los pedidos? (crítico para Escenario 3)
 
