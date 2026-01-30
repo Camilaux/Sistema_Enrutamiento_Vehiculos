@@ -12,13 +12,15 @@ from src.excel_reader import leer_escenario, listar_escenarios_disponibles
 
 
 def main():
-    filepath = "../data/datos_prueba_enrutamiento.xlsx"
+    # Construir ruta absoluta al archivo de datos
+    filepath = project_root / "data" / "datos_prueba_enrutamiento.xlsx"
     
     try:
         # Listar escenarios disponibles
         print("=" * 60)
+        print(f"Leyendo archivo: {filepath}")
         print("Escenarios disponibles:")
-        escenarios = listar_escenarios_disponibles(filepath)
+        escenarios = listar_escenarios_disponibles(str(filepath))
         print(f"  {escenarios}")
         print()
         
