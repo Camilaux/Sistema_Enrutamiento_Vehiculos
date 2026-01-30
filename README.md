@@ -96,7 +96,7 @@ La función objetivo global se define como:
 
 
 $$
-\text{Costo total} = \sum \text{Costo\_ruta} + \sum \text{Penalización\_no\_asignados}
+\text{Costo total} = \sum \text{Costo ruta} + \sum \text{Penalización no asignados}
 $$
 
 ##### Costo de una ruta
@@ -104,7 +104,7 @@ $$
 Para cada vehículo, el costo de su ruta se calcula como:
 
 $$
-\text{Costo\_ruta} = w_{dist} \cdot \text{distancia\_total} + w_{wait} \cdot \text{tiempo\_espera} + w_{waste} \cdot (\text{desperdicio\_capacidad})^2
+\text{Costo ruta} = w_{dist} \cdot \text{distancia total} + w_{wait} \cdot \text{tiempo espera} + w_{waste} \cdot (\text{desperdicio capacidad})^2
 $$
 
 Donde:
@@ -116,7 +116,7 @@ Donde:
 - desperdicio_capacidad: 
 
 $$
-\text{desperdicio\_capacidad} = \frac{\text{capacidad\_vehículo} - \text{carga\_asignada}}{\text{capacidad\_vehículo}}
+\text{desperdicio capacidad} = \frac{\text{capacidad vehículo} - \text{carga asignada}}{\text{capacidad vehículo}}
 $$
 
 Este término penaliza el uso ineficiente de vehículos grandes para pedidos que podrían ser atendidos por vehículos más pequeños, favoreciendo un mejor capacity matching.
@@ -133,7 +133,7 @@ Las siguientes restricciones se tratan como hard constraints (costo infinito si 
 
 Cada pedido no asignado genera una penalización cuadrática en función de su prioridad:
 $$
-\text{Penalización\_no\_asignado} = w_{unassigned} \cdot \text{prioridad}^2
+\text{Penalización no asignado} = w_{unassigned} \cdot \text{prioridad}^2
 $$
 
 Esto garantiza que:
